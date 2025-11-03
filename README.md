@@ -10,22 +10,12 @@ Powered by FastAPI + Gemini LLM models
 
 ---
 
-## ✨ Features
-
-| Feature | Description |
-|--------|-----------|
-📌 Track registration | Users select roles via `/register-track` modal  
-🧠 AI summarization | Turns task announcements into readable breakdowns highlighting core deliverables
-🔔 Smart notifications | Sends tasks only to relevant team members  
-📎 Slack-native | Works fully inside Slack channels + DMs  
-🧵 Thread-safe | Handles real Slack events + modals  
-📦 DB storage | Saves user track preferences (SQLModel)
 
 ## ✨ Commands
 
 | Command | Purpose |
 |--------|-----------|
-/a2a/riddler | Indicate the track(s) (Frontend, Backend, PM etc.) you want to be notified of
+/a2a/riddler | generates riddles, handles hints and answers
 ---
 
 ## 🏗️ Architecture
@@ -33,6 +23,15 @@ Powered by FastAPI + Gemini LLM models
 - **FastAPI backend**
 - **Gemini**
 - **Uvicorn server**
+
+Riddler is powered by FastAPI and uses Google Gemini 2.0 Flash for language generation. Session memory is handled in-app using a task-bound store, ensuring each Telex task ID has its own riddle state.
+
+The core flow is simple:
+• Telex sends a message update
+• FastAPI receives the JSON-RPC request
+• The agent extracts user intent
+• It either serves a new riddle, hint, or answer
+• A Telex-formatted JSON-RPC response is returned
 
 ---
 
