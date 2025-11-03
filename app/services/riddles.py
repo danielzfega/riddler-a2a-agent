@@ -28,27 +28,39 @@ _store_lock = asyncio.Lock()
 
 # ✅ Gemini call
 # ✅ Correct Gemini call for google-genai client
+# app/services/riddles.py - Corrected version
+
+# ... (imports and get_gemini_client remain the same)
+
+# ✅ Corrected Gemini call for google-genai client
 async def call_gemini(prompt: str, max_tokens: int = None) -> str:
     client = get_gemini_client()
+
+    # The prompt content needs to be in the correct list format for the SDK
+    contents = [{"role": "user", "parts": [{"text": prompt}]}]
+    
+    # Configuration should use the 'config' keyword
+    config_settings = {
+        "temperature": 0.95,
+        "max_output_tokens": max_tokens or 256,
+    }
 
     try:
         response = client.models.generate_content(
             model=GEMINI_MODEL,
-            contents=prompt,
-            temperature=0.95,
-            max_output_tokens=max_tokens or 256,
+            contents=contents, # Use the list of content parts
+            config=config_settings # Use 'config' instead of 'generation_config'
         )
 
-        # Extract text
-        if response.candidates and response.candidates[0].content.parts:
-            return "".join(p.text for p in response.candidates[0].content.parts if hasattr(p, "text")).strip()
-
+        # Extract text from Gemini response (Simplified extraction based on common SDK behavior)
+        if hasattr(response, "text") and response.text:
+            return response.text.strip()
+            
         return ""
+
     except Exception as e:
-        return f"LLM ERROR: {str(e)}"
-
-
-
+        # A more robust error message, including the error type
+        return f"LLM ERROR: {type(e).__name__}: {str(e)}"
 
 
 # ✅ Riddle generator
