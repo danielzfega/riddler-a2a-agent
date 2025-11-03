@@ -4,8 +4,13 @@ from app.models.a2a import *
 from app.services.riddles import generate_riddle
 from pydantic import BaseModel
 import json, re, asyncio, os
+from dotenv import load_dotenv
 
-app = FastAPI(title="Nori Riddle Agent", version="1.0.0")
+
+load_dotenv()
+
+
+app = FastAPI(title="Riddler Agent", version="1.0.0")
 
 # In-memory store: maps taskId -> {"riddle":..., "hint":..., "answer":..., "state": "asked"|"hint_shown"|"answered"}
 _RIDDLE_STORE = {}
@@ -70,7 +75,7 @@ def extract_prompt(rpc, body):
     return text, task_id
 
 
-@app.post("/a2a/nori")
+@app.post("/a2a/riddler")
 async def handle_a2a(req: Request):
     body = await req.json()
     print("\n📩 RAW REQUEST:\n", json.dumps(body, indent=2))
@@ -169,7 +174,7 @@ async def handle_a2a(req: Request):
 
     result = TaskResult(
         id=task_id,
-        contextId="nori-riddle-context",
+        contextId="riddler-riddle-context",
         status=TaskStatus(state=state, message=agent_msg),
         artifacts=[Artifact(name="riddle_raw", parts=[MessagePart(kind="text", text=raw_artifact)])],
         history=[agent_msg]
@@ -180,4 +185,4 @@ async def handle_a2a(req: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agent": "Nori-Riddle", "version": "1.0.0"}
+    return {"status": "ok", "agent": "Riddler", "version": "1.0.0"}
