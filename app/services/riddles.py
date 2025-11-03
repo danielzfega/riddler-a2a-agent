@@ -1,17 +1,18 @@
-# app/services/riddles.py
 import os
 import json
 import re
 import asyncio
-from google import genai
-import httpx
 from typing import Dict
+from google import genai
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Environment Vars
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-HF_API_KEY = os.getenv("HF_API_KEY")
-HF_MODEL = os.getenv("HF_MODEL", "sshleifer/distilbart-cnn-12-6")
+
 
 # Gemini Client
 def get_gemini_client():
@@ -19,56 +20,47 @@ def get_gemini_client():
         raise RuntimeError("GEMINI_API_KEY is missing")
     return genai.Client(api_key=GEMINI_API_KEY)
 
-
 _store_lock = asyncio.Lock()
 
-# ✅ NEW Gemini function
-async def call_gemini(prompt: str, max_tokens: int = 200) -> str:
+# ✅ Gemini call
+# ✅ Gemini call (accept max_tokens for compatibility, ignore internally)
+# app/services/riddles.py
+
+# ✅ Gemini call
+# ✅ Correct Gemini call for google-genai client
+async def call_gemini(prompt: str, max_tokens: int = None) -> str:
     client = get_gemini_client()
 
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[{"role": "user", "parts": [{"text": prompt}]}],
-        generation_config={
-            "max_output_tokens": max_tokens,
-            "temperature": 0.95
-        }
-    )
+    try:
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            temperature=0.95,
+            max_output_tokens=max_tokens or 256,
+        )
 
-    if hasattr(response, "text") and response.text:
-        return response.text.strip()
-    return str(response)
+        # Extract text
+        if response.candidates and response.candidates[0].content.parts:
+            return "".join(p.text for p in response.candidates[0].content.parts if hasattr(p, "text")).strip()
+
+        return ""
+    except Exception as e:
+        return f"LLM ERROR: {str(e)}"
 
 
-# ✅ HuggingFace fallback unchanged
-async def call_hf(prompt: str, max_tokens: int = 200) -> str:
-    if not HF_API_KEY:
-        raise RuntimeError("HF_API_KEY not set for fallback")
 
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    payload = {"inputs": prompt, "parameters": {"max_new_tokens": max_tokens, "temperature": 0.8}}
 
-    async with httpx.AsyncClient(timeout=30.0) as client_http:
-        url = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
-        r = await client_http.post(url, headers=headers, json=payload)
-        r.raise_for_status()
-        js = r.json()
 
-    if isinstance(js, list) and js and isinstance(js[0], dict) and "generated_text" in js[0]:
-        return js[0]["generated_text"].strip()
-    if isinstance(js, dict) and "generated_text" in js:
-        return js["generated_text"].strip()
-    if isinstance(js, list) and js and "summary_text" in js[0]:
-        return js[0]["summary_text"].strip()
+# ✅ Riddle generator
+# app/services/riddles.py
 
-    return str(js)
+# ✅ Riddle generator
 
-# ✅ Riddle generator (unchanged)
 async def generate_riddle(topic: str = None) -> Dict[str, str]:
     topic_text = f" about {topic}" if topic else ""
     prompt = f"""
-Create *one* fresh, original riddle{topic_text}.
-Return STRICT JSON ONLY:
+Create one original riddle{topic_text}.
+Return ONLY valid JSON in this exact structure:
 {{
  "riddle": "...",
  "hint": "...",
@@ -76,23 +68,21 @@ Return STRICT JSON ONLY:
 }}
 
 Rules:
+- Make it moderately challenging
 - No repeated famous riddles
 - Hint must be one short sentence
 - Answer one word or short phrase
 - No markdown, no backticks
 
 Example:
-{{"riddle": "I have keys but no locks...", "hint": "You'll find me where letters live.", "answer": "keyboard"}}
+{{"riddle":"I have keys but no locks...","hint":"You'll find me where letters live.","answer":"keyboard"}}
 
-Now generate a new one.
+Now create a new one.
 """
 
-    try:
-        out = await call_gemini(prompt, max_tokens=200)
-    except Exception:
-        out = await call_hf(prompt, max_tokens=200)
+    out = await call_gemini(prompt, max_tokens=200)
 
-    # extract JSON
+    # Extract JSON from LLM output
     m = re.search(r"(\{[\s\S]*\})", out)
     if m:
         try:
@@ -105,13 +95,16 @@ Now generate a new one.
         except:
             pass
 
+    # Fallback parse if bad JSON
     lines = [l.strip() for l in out.splitlines() if l.strip()]
-    r, h, a = "", "", ""
-    if lines: r = lines[0]
-    if len(lines) > 1: h = lines[1]
-    if len(lines) > 2: a = lines[2]
-
+    r = lines[0] if len(lines) > 0 else ""
+    h = lines[1] if len(lines) > 1 else ""
+    a = lines[2] if len(lines) > 2 else ""
     return {"riddle": r, "hint": h, "answer": a}
+
+
+
+
 
 # # app/services/riddles.py
 # import os
