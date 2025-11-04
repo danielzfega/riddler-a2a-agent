@@ -18,28 +18,30 @@ _STORE_LOCK = asyncio.Lock()
 
 
 def extract_user_text(body):
-    # Telex sometimes sends previous history + data noise.
-    # We only take the LAST text message the user sent.
-
     msg = body.get("params", {}).get("message", {})
     parts = msg.get("parts", [])
 
-    # Reverse to get latest meaningful text
+    # Extract latest human text, ignoring riddle-like text & history spam
     for p in reversed(parts):
         if p.get("kind") == "text":
             txt = p.get("text", "").strip()
-            # ignore HTML and system artifacts
-            if txt and not txt.startswith("<"):
-                return txt
 
-    # fallback: maybe in params.messages
-    messages = body.get("params", {}).get("messages", [])
-    if messages:
-        for p in reversed(messages[-1].get("parts", [])):
-            if p.get("kind") == "text":
-                return p.get("text", "").strip()
+            # ignore system / html / bot history artifacts
+            if not txt or txt.startswith("<"):
+                continue
+            
+            # Ignore text that looks like already generated riddles
+            if any(w in txt.lower() for w in ["here's a riddle", "hint:", "answer:", "i have", "i can"]):
+                continue
+            
+            # If text is extremely long, it's probably history, skip
+            if len(txt) > 120:
+                continue
+
+            return txt
 
     return ""
+
 
 
 def extract_task_id(body):
@@ -72,22 +74,29 @@ async def riddler(req: Request):
 
     if want_hint and record:
         return format_reply(task_id, record,
-            f"💡 Hint: {record['hint']}\n\nReply A to see the answer."
+            f"💡 Hint: {record['hint']}\n\nReply A to see the answer or ask for another riddle."
         )
+
 
     if want_answer and record:
         return format_reply(task_id, record,
-            f"✅ Answer: {record['answer']}\n\nReply anything to get a new riddle!"
+            f"✅ Answer: {record['answer']}\n\nAsk for another riddle anytime!"
         )
+
 
     # otherwise get new riddle
     rec = await generate_riddle()
     async with _STORE_LOCK:
         _RIDDLE_STORE[task_id] = rec
 
-    return format_reply(task_id, rec,
-        f"🧩 Riddle:\n{rec['riddle']}\n\nReply H for hint or A for answer."
-    )
+
+    text = f"🧩 Riddle:\n{rec['riddle']}"
+
+    # Only show instruction if not a continuation
+    text += "\n\nReply H for hint or A for answer."
+
+    return format_reply(task_id, rec, text)
+
 
 
 def format_reply(task_id, rec, text):
