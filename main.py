@@ -1,18 +1,10 @@
-
-
-
 from fastapi import FastAPI, Request
 from app.models.a2a import *
 from app.services.riddles import generate_riddle
-from pydantic import BaseModel
-import json, re, asyncio
-from dotenv import load_dotenv
+import asyncio
 
-load_dotenv()
+app = FastAPI(title="Riddler Agent", version="2.0.0")
 
-app = FastAPI(title="Riddler Agent", version="1.2.0")
-
-# Store riddle context per session (taskId)
 _RIDDLE_STORE = {}
 _STORE_LOCK = asyncio.Lock()
 
@@ -20,22 +12,16 @@ _STORE_LOCK = asyncio.Lock()
 def extract_user_text(body):
     msg = body.get("params", {}).get("message", {})
     parts = msg.get("parts", [])
-
-    # Extract latest human text, ignoring riddle-like text & history spam
+    
     for p in reversed(parts):
         if p.get("kind") == "text":
             txt = p.get("text", "").strip()
 
-            # ignore system / html / bot history artifacts
             if not txt or txt.startswith("<"):
                 continue
-            
-            # Ignore text that looks like already generated riddles
-            if any(w in txt.lower() for w in ["here's a riddle", "hint:", "answer:", "i have", "i can"]):
-                continue
-            
-            # If text is extremely long, it's probably history, skip
             if len(txt) > 120:
+                continue
+            if txt.lower() in ["h", "a"]:
                 continue
 
             return txt
@@ -43,15 +29,12 @@ def extract_user_text(body):
     return ""
 
 
-
 def extract_task_id(body):
     tid = (
         body.get("params", {}).get("message", {}).get("taskId")
         or body.get("params", {}).get("taskId")
     )
-    # fallback if Telex didn't send one
     return tid or f"task-{int(asyncio.get_event_loop().time()*1000)}"
-
 
 
 @app.post("/a2a/riddler")
@@ -60,7 +43,7 @@ async def riddler(req: Request):
     user_text = extract_user_text(body)
     task_id = extract_task_id(body)
 
-    lower = user_text.lower().strip()
+    lower = user_text.lower()
     want_hint = lower == "h"
     want_answer = lower == "a"
 
@@ -73,33 +56,21 @@ async def riddler(req: Request):
             _RIDDLE_STORE[task_id] = record
 
     if want_hint and record:
-        return format_reply(task_id, record,
-            f"💡 Hint: {record['hint']}\n\nReply A to see the answer or ask for another riddle."
-        )
-
+        return reply(task_id, record, f"💡 Hint: {record['hint']}\n\nReply A for answer.")
 
     if want_answer and record:
-        return format_reply(task_id, record,
-            f"✅ Answer: {record['answer']}\n\nAsk for another riddle anytime!"
-        )
+        return reply(task_id, record, f"✅ Answer: {record['answer']}\n\nAsk for another riddle anytime!")
 
-
-    # otherwise get new riddle
-    rec = await generate_riddle()
+    # otherwise generate new riddle + store
+    new_record = await generate_riddle(user_text)
     async with _STORE_LOCK:
-        _RIDDLE_STORE[task_id] = rec
+        _RIDDLE_STORE[task_id] = new_record
+
+    text = f"🧩 Riddle:\n{new_record['riddle']}\n\nReply H for hint or A for answer."
+    return reply(task_id, new_record, text)
 
 
-    text = f"🧩 Riddle:\n{rec['riddle']}"
-
-    # Only show instruction if not a continuation
-    text += "\n\nReply H for hint or A for answer."
-
-    return format_reply(task_id, rec, text)
-
-
-
-def format_reply(task_id, rec, text):
+def reply(task_id, rec, text):
     agent_msg = A2AMessage(
         role="agent",
         taskId=task_id,
@@ -115,11 +86,11 @@ def format_reply(task_id, rec, text):
                 name="riddle_data",
                 parts=[MessagePart(
                     kind="text",
-                    text=f"{rec['riddle']} | hint: {rec['hint']} | answer: {rec['answer']}"
+                    text=f"riddle: {rec['riddle']}\nhint: {rec['hint']}\nanswer: {rec['answer']}"
                 )]
             )
         ],
-        history=[agent_msg]
+        history=[agent_msg],
     )
 
     return JSONRPCResponse(id=task_id, result=result).model_dump()
@@ -127,4 +98,8 @@ def format_reply(task_id, rec, text):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agent": "Riddler", "version": "1.0.1"}
+    return {"status": "ok", "agent": "Riddler", "version": "2.0.0"}
+
+
+
+

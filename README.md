@@ -100,4 +100,4 @@ uvicorn main:app --reload --port 4001
 ```
 ## Live URL
 ```bash
-https://riddler-a2a-agent.up.railway.app/
+https://riddler-a2a-agent.up.railway.app/a2a/riddler
