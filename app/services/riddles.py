@@ -38,20 +38,22 @@ def extract_topic(user_text: str) -> str | None:
     if not user_text:
         return None
 
-    user_text = user_text.lower()
+    user_text = user_text.lower().strip()
 
     # Ignore hint/answer commands
     if user_text in ["h", "a", "hint", "answer"]:
         return None
 
-    # Match "riddle about ___"
-    m = re.search(r"(?:riddle|about|on|related to)\s+([a-z]+)", user_text)
+    # ✅ Capture riddle about Egypt / riddle about ancient Egypt / give me riddle about pyramids
+    m = re.search(r"(?:riddle\s+about|about)\s+([a-z\s]+)", user_text)
     if m:
-        return m.group(1)
+        topic = m.group(1).strip(" .,!?:;")
+        return topic.split()[0] if len(topic.split()) > 2 else topic  # single or simple topic
 
     # fallback: longest meaningful word
     words = [w for w in re.findall(r"[a-zA-Z]+", user_text) if len(w) > 3]
     return words[0] if words else None
+
 
 async def generate_riddle(user_text: str = None) -> Dict[str, str]:
     topic = extract_topic(user_text)
@@ -69,6 +71,8 @@ Rules:
 - Hint: 1 short sentence
 - Answer: 1 word or short phrase
 - Must be clever and original, not a known riddle
+- DO NOT provide hint or answer until the user replies with H or A
+- The end of the response MUST say: "Reply H for Hint or A for Answer"
 
 JSON format:
 {{
@@ -76,12 +80,8 @@ JSON format:
  "hint": "...",
  "answer": "..."
 }}
-
-Example:
-{{"riddle":"I turn day into night without moving a mile.","hint":"Found in space.","answer":"eclipse"}}
-
-Now output ONLY the JSON.
 """
+
 
     output = await call_gemini(prompt)
 
