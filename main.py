@@ -52,10 +52,12 @@ async def riddler(req: Request):
             _RIDDLE_STORE[task_id] = record
 
     if want_hint and record:
-        return reply(task_id, record, f"💡 Hint: {record['hint']}\n\nReply A for answer.")
+        return reply(task_id, record, f"💡 Hint: {record['hint']}\n\nReply A for answer.", show_hint=True)
+
 
     if want_answer and record:
-        return reply(task_id, record, f"✅ Answer: {record['answer']}\n\nSay 'give me a riddle' for another!")
+        return reply(task_id, record, f"✅ Answer: {record['answer']}\n\nSay 'give me a riddle' for another!", show_hint=True, show_answer=True)
+
 
     new_riddle = await generate_riddle(user_text)
     async with _LOCK:
@@ -63,7 +65,15 @@ async def riddler(req: Request):
 
     return reply(task_id, new_riddle, f"🧩 Riddle:\n{new_riddle['riddle']}\n\nReply H for hint or A for answer.")
 
-def reply(task_id, rec, text):
+def reply(task_id, rec, text, show_hint=False, show_answer=False):
+    artifact_text = f"riddle: {rec['riddle']}"
+
+    if show_hint:
+        artifact_text += f"\nhint: {rec['hint']}"
+
+    if show_answer:
+        artifact_text += f"\nhint: {rec['hint']}\nanswer: {rec['answer']}"
+
     agent_msg = A2AMessage(
         role="agent",
         taskId=task_id,
@@ -77,13 +87,15 @@ def reply(task_id, rec, text):
         artifacts=[
             Artifact(
                 name="riddle_data",
-                parts=[MessagePart(kind="text", text=f"riddle: {rec['riddle']}\nhint: {rec['hint']}\nanswer: {rec['answer']}")]
+                parts=[MessagePart(kind="text", text=artifact_text)]
             )
         ],
         history=[agent_msg],
     )
 
     return JSONRPCResponse(id=task_id, result=result).model_dump()
+
+
 
 @app.get("/health")
 async def health():
