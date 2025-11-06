@@ -2,12 +2,12 @@ from fastapi import FastAPI, Request
 from app.models.a2a import *
 from app.services.riddles import generate_riddle
 import asyncio
-import re
 
-app = FastAPI(title="Riddler Agent", version="2.1.0")
+app = FastAPI(title="Riddler Agent", version="2.2.0")
 
 _RIDDLE_STORE = {}
 _LOCK = asyncio.Lock()
+
 
 def extract_user_text(body):
     parts = body.get("params", {}).get("message", {}).get("parts", [])
@@ -24,8 +24,8 @@ def extract_user_text(body):
             continue
 
         return t
-
     return ""
+
 
 def extract_task_id(body):
     return (
@@ -34,50 +34,43 @@ def extract_task_id(body):
         or f"task-{int(asyncio.get_event_loop().time()*1000)}"
     )
 
+
 @app.post("/a2a/riddler")
 async def riddler(req: Request):
     body = await req.json()
     user_text = extract_user_text(body).lower()
     task_id = extract_task_id(body)
 
-    want_hint = user_text == "h"
-    want_answer = user_text == "a"
-
     async with _LOCK:
         record = _RIDDLE_STORE.get(task_id)
 
-    if (want_hint or want_answer) and not record:
-        record = await generate_riddle()
+    # If user asks for a riddle (plain or with topic)
+    if "riddle" in user_text or "give me" in user_text:
+        new_riddle = await generate_riddle(user_text)
         async with _LOCK:
-            _RIDDLE_STORE[task_id] = record
+            _RIDDLE_STORE[task_id] = new_riddle
 
-    if want_hint and record:
-        return reply(task_id, record, f"💡 Hint: {record['hint']}\n\nReply A for answer.", show_hint=True)
+        return reply(
+            task_id,
+            new_riddle,
+            f"🧩 Riddle:\n{new_riddle['riddle']}\n\n💡 Hint: {new_riddle['hint']}\n✅ Answer: {new_riddle['answer']}\n\nSay 'give me another riddle' for more!"
+        )
+
+    # Default fallback: guide user
+    return reply(
+        task_id,
+        record or {"riddle": "", "hint": "", "answer": ""},
+        "Say 'give me a riddle' or 'give me a riddle about space, Egypt, love, or technology.'"
+    )
 
 
-    if want_answer and record:
-        return reply(task_id, record, f"✅ Answer: {record['answer']}\n\nSay 'give me a riddle' for another!", show_hint=True, show_answer=True)
-
-
-    new_riddle = await generate_riddle(user_text)
-    async with _LOCK:
-        _RIDDLE_STORE[task_id] = new_riddle
-
-    return reply(task_id, new_riddle, f"🧩 Riddle:\n{new_riddle['riddle']}\n\nReply H for hint or A for answer.")
-
-def reply(task_id, rec, text, show_hint=False, show_answer=False):
-    artifact_text = f"riddle: {rec['riddle']}"
-
-    if show_hint:
-        artifact_text += f"\nhint: {rec['hint']}"
-
-    if show_answer:
-        artifact_text += f"\nhint: {rec['hint']}\nanswer: {rec['answer']}"
+def reply(task_id, rec, text):
+    artifact_text = f"riddle: {rec.get('riddle','')}\nhint: {rec.get('hint','')}\nanswer: {rec.get('answer','')}"
 
     agent_msg = A2AMessage(
         role="agent",
         taskId=task_id,
-        parts=[MessagePart(kind="text", text=text)]
+        parts=[MessagePart(kind="text", text=text)],
     )
 
     result = TaskResult(
@@ -87,7 +80,7 @@ def reply(task_id, rec, text, show_hint=False, show_answer=False):
         artifacts=[
             Artifact(
                 name="riddle_data",
-                parts=[MessagePart(kind="text", text=artifact_text)]
+                parts=[MessagePart(kind="text", text=artifact_text)],
             )
         ],
         history=[agent_msg],
@@ -96,7 +89,6 @@ def reply(task_id, rec, text, show_hint=False, show_answer=False):
     return JSONRPCResponse(id=task_id, result=result).model_dump()
 
 
-
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agent": "Riddler 2.1.0"}
+    return {"status": "ok", "agent": "Riddler 2.2.0"}

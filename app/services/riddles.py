@@ -13,6 +13,7 @@ def get_gemini_client():
         raise RuntimeError("GEMINI_API_KEY is missing")
     return genai.Client(api_key=GEMINI_API_KEY)
 
+
 async def call_gemini(prompt: str, max_tokens: int = 250) -> str:
     client = get_gemini_client()
 
@@ -34,7 +35,9 @@ async def call_gemini(prompt: str, max_tokens: int = 250) -> str:
     except Exception as e:
         return f"LLM ERROR: {e}"
 
+
 def extract_topic(user_text: str) -> str | None:
+    """Extract topic after 'about' keyword if present."""
     if not user_text:
         return None
 
@@ -44,44 +47,40 @@ def extract_topic(user_text: str) -> str | None:
     if user_text in ["h", "a", "hint", "answer"]:
         return None
 
-    # ✅ Capture riddle about Egypt / riddle about ancient Egypt / give me riddle about pyramids
+    # Match "riddle about X", "give me a riddle about X", etc.
     m = re.search(r"(?:riddle\s+about|about)\s+([a-z\s]+)", user_text)
     if m:
         topic = m.group(1).strip(" .,!?:;")
-        return topic.split()[0] if len(topic.split()) > 2 else topic  # single or simple topic
+        return topic
 
-    # fallback: longest meaningful word
+    # fallback: single long word
     words = [w for w in re.findall(r"[a-zA-Z]+", user_text) if len(w) > 3]
     return words[0] if words else None
 
 
 async def generate_riddle(user_text: str = None) -> Dict[str, str]:
+    """Generate riddle (with hint + answer) optionally themed by topic."""
     topic = extract_topic(user_text)
-    topic_prompt = f" themed around {topic}" if topic else ""
+    topic_prompt = f" about {topic}" if topic else ""
 
     prompt = f"""
-You are a master riddle generator.
+You are a creative master of riddles.
 
-Create ONE original riddle{topic_prompt}.
+Write ONE original riddle{topic_prompt}. Provide its hint and answer.
 
 Rules:
-- Output ONLY JSON. No intro text.
-- NO markdown, no backticks
-- No line breaks inside JSON values
-- Hint: 1 short sentence
-- Answer: 1 word or short phrase
-- Must be clever and original, not a known riddle
-- DO NOT provide hint or answer until the user replies with H or A
-- The end of the response MUST say: "Reply H for Hint or A for Answer"
+- Return JSON only, no markdown or backticks.
+- No extra commentary or text.
+- Hint: one concise clue.
+- Answer: one or two words.
 
 JSON format:
 {{
- "riddle": "...",
- "hint": "...",
- "answer": "..."
+ "riddle": "string",
+ "hint": "string",
+ "answer": "string"
 }}
 """
-
 
     output = await call_gemini(prompt)
 
@@ -93,6 +92,7 @@ JSON format:
         except:
             pass
 
+    # fallback
     return {
         "riddle": "I am heard once, yet echoed twice, living in mountains of silent ice. What am I?",
         "hint": "Nature repeats me.",
