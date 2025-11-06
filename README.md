@@ -51,6 +51,9 @@ GEMINI_MODEL=gemini-2.0-flash
 #Telex
 TELEX_BASE_URL=https://api.telex.im
 
+#API Ninjas api key
+API_NINJAS_KEY=your-api-ninjas-key                   get it from https://api-ninjas.com/profile
+
 # FastAPI
 PORT=4001
 
