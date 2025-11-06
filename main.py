@@ -3,7 +3,7 @@ from app.models.a2a import *
 from app.services.riddles import generate_riddle
 import asyncio
 
-app = FastAPI(title="Riddler Agent", version="3.0.0")
+app = FastAPI(title="Riddler Agent", version="3.0.0", docs="/docs", redoc_url="/redoc")
 
 _RIDDLE_STORE = {}
 _LOCK = asyncio.Lock()
