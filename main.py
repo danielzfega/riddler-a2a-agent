@@ -3,7 +3,7 @@ from app.models.a2a import *
 from app.services.riddles import generate_riddle
 import asyncio
 
-app = FastAPI(title="Riddler Agent", version="2.2.0")
+app = FastAPI(title="Riddler Agent", version="3.0.0")
 
 _RIDDLE_STORE = {}
 _LOCK = asyncio.Lock()
@@ -11,18 +11,12 @@ _LOCK = asyncio.Lock()
 
 def extract_user_text(body):
     parts = body.get("params", {}).get("message", {}).get("parts", [])
-
     for p in reversed(parts):
         if p.get("kind") != "text":
             continue
-
         t = p.get("text", "").strip()
-
-        if not t or t.startswith("<"):
+        if not t or t.startswith("<") or len(t) > 160:
             continue
-        if len(t) > 160:
-            continue
-
         return t
     return ""
 
@@ -44,7 +38,7 @@ async def riddler(req: Request):
     async with _LOCK:
         record = _RIDDLE_STORE.get(task_id)
 
-    # If user asks for a riddle (plain or with topic)
+    # Handle riddle requests
     if "riddle" in user_text or "give me" in user_text:
         new_riddle = await generate_riddle(user_text)
         async with _LOCK:
@@ -56,7 +50,7 @@ async def riddler(req: Request):
             f"🧩 Riddle:\n{new_riddle['riddle']}\n\n💡 Hint: {new_riddle['hint']}\n✅ Answer: {new_riddle['answer']}\n\nSay 'give me another riddle' for more!"
         )
 
-    # Default fallback: guide user
+    # Default fallback message
     return reply(
         task_id,
         record or {"riddle": "", "hint": "", "answer": ""},
@@ -91,4 +85,4 @@ def reply(task_id, rec, text):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agent": "Riddler 2.2.0"}
+    return {"status": "ok", "agent": "Riddler 3.0.0"}
